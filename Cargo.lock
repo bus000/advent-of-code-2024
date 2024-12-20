@@ -9,6 +9,7 @@ dependencies = [
  "assert_cmd",
  "nom",
  "predicates 2.1.5",
+ "regex",
 ]
 
 [[package]]
