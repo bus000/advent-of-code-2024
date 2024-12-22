@@ -11,6 +11,10 @@ assert_cmd = "2.0"
 predicates = "2.1"
 regex = "1.11.1"
 
+[lib]
+name = "advent_of_code_2024"
+path = "lib/finite_automata.rs"
+
 [[bin]]
 name = "day01_1"
 path = "day01/part1/main.rs"

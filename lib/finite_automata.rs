@@ -5,27 +5,27 @@ use std::collections::HashMap;
 /// Contains a set of legal states with transitions on them. Contains a
 /// reference to the current state. A function FiniteAutomata.transition is used
 /// to transition between states.
-struct FiniteAutomata {
+struct FiniteAutomata<'a> {
 
     /// Reference of the current state.
-    current_state : mut &str,
+    current_state : &'a str,
 
     /// All states.
-    states: mut HashMap<&str, State>
+    states: HashMap<&'a str, State<'a>>
 
 }
 
-impl FiniteAutomata {
+impl FiniteAutomata<'_> {
 
     /// Create a new finite automata.
     ///
     /// Will set the current_state as the given initial_state.
-    pub fn new(&str: initial_state) -> FiniteAutomata {
-        let states = HashMap::new();
-        states.put(initial_state, State::new(initial_state));
+    pub fn new<'a>(initial_state: &'a str) -> FiniteAutomata<'a> {
+        let mut states = HashMap::new();
+        states.insert(initial_state, State::new(initial_state));
         return FiniteAutomata {
-            current_state = initial_state,
-            states = states
+            current_state: initial_state,
+            states: states
         };
     }
 
@@ -35,14 +35,16 @@ impl FiniteAutomata {
     ///
     /// Will give error DuplicateState if given a state reference that already
     /// exist.
-    pub fn add_state(&mut self, &str state_ref)
-        -> Result<FiniteAutomataError, State> {
+    pub fn add_state<'a>(&'a mut self, state_ref: &'a str)
+        -> Result<(), FiniteAutomataError> {
 
         if self.states.contains_key(state_ref) {
-            return Err(FiniteAutomataError.DuplicateState);
+            return Err(FiniteAutomataError::DuplicateState);
         }
 
-        self.states.insert(state_ref, State::new(state_ref));
+        let state = State::new(state_ref);
+        self.states.insert(state_ref, state);
+        return Ok(());
     }
 
     /// Add a transition to a state.
@@ -56,25 +58,31 @@ impl FiniteAutomata {
     ///
     /// Will give error FiniteAutomataError.MissingState if either state_ref or
     /// resulting_state_ref could not be found on the finite automata.
-    pub fn add_transition(&mut self, state_ref : &str, p: P,
-        resulting_state_ref: &str) -> Result<FiniteAutomataError, ()> where
-        P: Fn(u8) -> bool {
+    pub fn add_transition(&mut self, state_ref : &str, p: &dyn Fn(u8) -> bool,
+        resulting_state_ref: &str) -> Result<(), FiniteAutomataError> {
 
         if !self.states.contains_key(resulting_state_ref) {
-            return Err(FiniteAutomataError.MissingState);
+            return Err(FiniteAutomataError::MissingState);
         }
-        return match self.find_state(state_ref) {
-            None => Err(FiniteAutomataError.MissingState);
-            Some state => {
+        return match self.find_state_mut(state_ref) {
+            None => {
+                Err(FiniteAutomataError::MissingState)
+            },
+            Some(state) => {
                 state.add_transition(p, resulting_state_ref);
-                Ok(());
+                Ok(())
             }
         }
     }
 
     /// Find the state with the given state_ref.
-    pub fn find_state(&self, state_ref: &str) -> Option<State> {
-        return self.states.find(state_ref);
+    pub fn find_state(&self, state_ref: &str) -> Option<&State> {
+        return self.states.get(state_ref);
+    }
+
+    /// Find the state with the given state_ref.
+    fn find_state_mut(&mut self, state_ref: &str) -> Option<&mut State> {
+        return self.states.get_mut(state_ref);
     }
 
     /// Transition from the current state on the given byte.
@@ -85,52 +93,66 @@ impl FiniteAutomata {
     ///
     /// Will give error FiniteAutomataError.MissingTransition if no transition
     /// matches the given byte.
-    pub fn transition(&mut self, byte: u8) -> Result<FiniteAutomataError, ()> {
+    pub fn transition(&mut self, byte: u8) -> Result<(), FiniteAutomataError> {
         let state = self.find_state(self.current_state)
             .expect("The current state can never refer to a missing state.");
         for transition in state.transitions.iter() {
-            if transition.predicate(byte) {
+            if (transition.predicate)(byte) {
                 self.current_state = transition.result_state_ref;
                 return Ok(());
             }
         }
 
-        return Err(FiniteAutomataError.MissingTransition);
+        return Err(FiniteAutomataError::MissingTransition);
     }
 
 }
 
 /// A state has a reference and a list of transitions to other states.
-struct State {
+struct State<'a> {
 
     /// Unique name of the state.
-    state_ref: &str,
+    state_ref: &'a str,
 
     /// Transitions to other states.
-    transitions: mut Vec<Transition>
+    transitions: Vec<Transition<'a>>
 
 }
 
-impl State {
+impl State<'_> {
 
     /// Construct a new state with the given name.
-    pub fn new(state_ref : &str) -> State {
+    pub fn new<'a>(state_ref : &str) -> State {
         return State {
-            state_ref = state_ref,
-            transitions = Vec::new()
+            state_ref: state_ref,
+            transitions: Vec::new()
         };
+    }
+
+    /// Add another transition to this state.
+    ///
+    /// The transition is added to the end of the list of transitions and will
+    /// only be tried if all other transitions fail matching.
+    pub fn add_transition(&mut self, p: &dyn Fn(u8) -> bool,
+        result_state_ref: &str) {
+
+        let transition = Transition {
+            predicate: Box::new(p),
+            result_state_ref: result_state_ref
+        };
+        self.transitions.push(transition);
     }
 
 }
 
 /// A transition is a predicate matching a byte and a result state if matching.
-struct Transition {
+struct Transition<'a> {
 
     /// Predicate matching whether the transition should be taken.
-    predicate : Fn(u8) -> bool,
+    predicate : Box<dyn Fn(u8) -> bool>,
 
     /// The state to transition to on success.
-    result_state_ref : &str
+    result_state_ref : &'a str
 
 }
 
