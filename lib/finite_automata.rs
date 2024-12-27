@@ -5,22 +5,22 @@ use std::collections::HashMap;
 /// Contains a set of legal states with transitions on them. Contains a
 /// reference to the current state. A function FiniteAutomata.transition is used
 /// to transition between states.
-struct FiniteAutomata<'a> {
+struct FiniteAutomata {
 
     /// Reference of the current state.
-    current_state : &'a str,
+    current_state : &'static str,
 
     /// All states.
-    states: HashMap<&'a str, State<'a>>
+    states: HashMap<&'static str, State>
 
 }
 
-impl FiniteAutomata<'_> {
+impl FiniteAutomata {
 
     /// Create a new finite automata.
     ///
     /// Will set the current_state as the given initial_state.
-    pub fn new<'a>(initial_state: &'a str) -> FiniteAutomata<'a> {
+    pub fn new(initial_state: &'static str) -> FiniteAutomata {
         let mut states = HashMap::new();
         states.insert(initial_state, State::new(initial_state));
         return FiniteAutomata {
@@ -35,7 +35,7 @@ impl FiniteAutomata<'_> {
     ///
     /// Will give error DuplicateState if given a state reference that already
     /// exist.
-    pub fn add_state<'a>(&'a mut self, state_ref: &'a str)
+    pub fn add_state(&mut self, state_ref: &'static str)
         -> Result<(), FiniteAutomataError> {
 
         if self.states.contains_key(state_ref) {
@@ -58,8 +58,9 @@ impl FiniteAutomata<'_> {
     ///
     /// Will give error FiniteAutomataError.MissingState if either state_ref or
     /// resulting_state_ref could not be found on the finite automata.
-    pub fn add_transition(&mut self, state_ref : &str, p: &dyn Fn(u8) -> bool,
-        resulting_state_ref: &str) -> Result<(), FiniteAutomataError> {
+    pub fn add_transition(&mut self, state_ref : &str,
+        p: &'static dyn Fn(u8) -> bool, resulting_state_ref: &'static str)
+        -> Result<(), FiniteAutomataError> {
 
         if !self.states.contains_key(resulting_state_ref) {
             return Err(FiniteAutomataError::MissingState);
@@ -109,20 +110,20 @@ impl FiniteAutomata<'_> {
 }
 
 /// A state has a reference and a list of transitions to other states.
-struct State<'a> {
+struct State {
 
     /// Unique name of the state.
-    state_ref: &'a str,
+    state_ref: &'static str,
 
     /// Transitions to other states.
-    transitions: Vec<Transition<'a>>
+    transitions: Vec<Transition>
 
 }
 
-impl State<'_> {
+impl State {
 
     /// Construct a new state with the given name.
-    pub fn new<'a>(state_ref : &str) -> State {
+    pub fn new(state_ref : &'static str) -> State {
         return State {
             state_ref: state_ref,
             transitions: Vec::new()
@@ -133,11 +134,11 @@ impl State<'_> {
     ///
     /// The transition is added to the end of the list of transitions and will
     /// only be tried if all other transitions fail matching.
-    pub fn add_transition(&mut self, p: &dyn Fn(u8) -> bool,
-        result_state_ref: &str) {
+    pub fn add_transition(&mut self, p: &'static dyn Fn(u8) -> bool,
+        result_state_ref: &'static str) {
 
         let transition = Transition {
-            predicate: Box::new(p),
+            predicate: p,
             result_state_ref: result_state_ref
         };
         self.transitions.push(transition);
@@ -146,17 +147,18 @@ impl State<'_> {
 }
 
 /// A transition is a predicate matching a byte and a result state if matching.
-struct Transition<'a> {
+struct Transition {
 
     /// Predicate matching whether the transition should be taken.
-    predicate : Box<dyn Fn(u8) -> bool>,
+    predicate : &'static dyn Fn(u8) -> bool,
 
     /// The state to transition to on success.
-    result_state_ref : &'a str
+    result_state_ref : &'static str
 
 }
 
 /// Errors returned by finite automatas.
+#[derive(Debug, PartialEq)]
 enum FiniteAutomataError {
 
     /// Error given when trying to add a state to an automata that already
@@ -169,5 +171,31 @@ enum FiniteAutomataError {
     /// Error given when given a byte that doesn't match any transition in the
     /// current state.
     MissingTransition
+
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Test that adding a duplicate state is not possible.
+    #[test]
+    fn test_add_state_duplicate() {
+        let mut automata = FiniteAutomata::new("0");
+        let result = automata.add_state("0");
+        assert_eq!(Err(FiniteAutomataError::DuplicateState), result);
+    }
+
+    /// Test that adding a state works as expected.
+    #[test]
+    fn test_add_state_not_duplicate() {
+        let mut automata = FiniteAutomata::new("0");
+        let result = automata.add_state("1");
+        assert_eq!(Ok(()), result);
+    }
+
+    /// Test that adding transition bl
+    //pub fn add_transition(&mut self, state_ref : &str,
+        //p: &'static dyn Fn(u8) -> bool, resulting_state_ref: &'static str)
 
 }
