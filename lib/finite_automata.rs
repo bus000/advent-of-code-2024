@@ -1,12 +1,12 @@
 /// A reference to a state in the finite state machine.
-type StateRef = usize;
+pub type StateRef = usize;
 
 /// A finite automata that can be used for string matching.
 ///
 /// Contains a set of legal states with transitions on them. Contains a
 /// reference to the current state. A function FiniteAutomata.transition is used
 /// to transition between states.
-struct FiniteAutomata {
+pub struct FiniteAutomata {
 
     /// Reference of the current state.
     current_state : StateRef,
@@ -30,6 +30,16 @@ impl FiniteAutomata {
         };
     }
 
+    /// Get the current state of the finite automata.
+    pub fn current_state(&self) -> StateRef {
+        self.current_state
+    }
+
+    /// Get list of states in the finite automata.
+    pub fn states(&self) -> &Vec<State> {
+        &self.states
+    }
+
     /// Add a state to a finite automata.
     pub fn add_state(&mut self) -> StateRef {
         let state_ref = self.states.len();
@@ -50,7 +60,7 @@ impl FiniteAutomata {
     /// Will give error FiniteAutomataError.MissingState if either state_ref or
     /// resulting_state_ref could not be found on the finite automata.
     pub fn add_transition(&mut self, state_ref : StateRef,
-        p: Box<dyn Fn(u8) -> bool + 'static>, resulting_state_ref: StateRef)
+        p: &'static dyn Fn(u8) -> bool, resulting_state_ref: StateRef)
         -> Result<(), FiniteAutomataError> {
 
         let state_count = self.states.len();
@@ -66,6 +76,31 @@ impl FiniteAutomata {
                 Ok(())
             }
         }
+    }
+
+    /// Add a transition to all states.
+    ///
+    /// Will add a transition to state resulting_state_ref from all state states
+    /// if the predicate p matches a byte. The transition is added at the end of
+    /// the list of transitions on the states. If another transition is matching
+    /// before this one it will not be taken.
+    ///
+    /// # Errors
+    ///
+    /// Will give error FiniteAutomataError.MissingState if resulting_state_ref
+    /// could not be found on the finite automata.
+    pub fn add_transition_all(&mut self, p: &'static dyn Fn(u8) -> bool,
+        resulting_state_ref: StateRef) -> Result<(), FiniteAutomataError> {
+
+        let state_count = self.states.len();
+        if resulting_state_ref >= state_count {
+            return Err(FiniteAutomataError::MissingState);
+        }
+        for state in self.states.iter_mut() {
+            state.add_transition(p, resulting_state_ref);
+        }
+
+        return Ok(())
     }
 
     /// Transition from the current state on the given byte.
@@ -104,7 +139,7 @@ impl FiniteAutomata {
 }
 
 /// A state has a reference and a list of transitions to other states.
-struct State {
+pub struct State {
 
     /// Unique name of the state.
     state_ref: StateRef,
@@ -124,11 +159,16 @@ impl State {
         };
     }
 
+    /// Get the unique ID of the state.
+    pub fn state_ref(&self) -> StateRef {
+        self.state_ref
+    }
+
     /// Add another transition to this state.
     ///
     /// The transition is added to the end of the list of transitions and will
     /// only be tried if all other transitions fail matching.
-    pub fn add_transition(&mut self, p: Box<dyn Fn(u8) -> bool + 'static>,
+    pub fn add_transition(&mut self, p: &'static dyn Fn(u8) -> bool,
         result_state_ref: StateRef) {
 
         let transition = Transition {
@@ -144,7 +184,7 @@ impl State {
 struct Transition {
 
     /// Predicate matching whether the transition should be taken.
-    predicate : Box<dyn Fn(u8) -> bool + 'static>,
+    predicate : &'static dyn Fn(u8) -> bool,
 
     /// The state to transition to on success.
     result_state_ref : StateRef
@@ -153,7 +193,7 @@ struct Transition {
 
 /// Errors returned by finite automatas.
 #[derive(Debug, PartialEq)]
-enum FiniteAutomataError {
+pub enum FiniteAutomataError {
 
     /// Error given when referencing a state that does not exist.
     MissingState,
@@ -186,7 +226,7 @@ mod tests {
         let mut automata = FiniteAutomata::new();
         let state_1 = automata.current_state;
         let state_2 = automata.add_state();
-        let predicate = Box::new(&|c| c == 0x78);
+        let predicate = &|c| c == 0x78;
         automata.add_transition(state_1, predicate, state_2)
             .expect("Both states exist, this should be fine.");
 
@@ -202,7 +242,7 @@ mod tests {
         let mut automata = FiniteAutomata::new();
         let state_1 = automata.current_state;
         automata.add_state();
-        let predicate = Box::new(&|c| c == 0x78);
+        let predicate = &|c| c == 0x78;
         let error = automata.add_transition(state_1, predicate, 44);
 
         assert_eq!(Err(FiniteAutomataError::MissingState), error);
@@ -215,7 +255,7 @@ mod tests {
         let mut automata = FiniteAutomata::new();
         automata.current_state;
         let state_2 = automata.add_state();
-        let predicate = Box::new(&|c| c == 0x78);
+        let predicate = &|c| c == 0x78;
         let error = automata.add_transition(44, predicate, state_2);
 
         assert_eq!(Err(FiniteAutomataError::MissingState), error);
@@ -227,7 +267,7 @@ mod tests {
         let mut automata = FiniteAutomata::new();
         let state_1 = automata.current_state;
         let state_2 = automata.add_state();
-        let predicate = Box::new(&|c| c == 0x78);
+        let predicate = &|c| c == 0x78;
         automata.add_transition(state_1, predicate, state_2)
             .expect("Both states exist, this should be fine.");
 
@@ -242,7 +282,7 @@ mod tests {
         let mut automata = FiniteAutomata::new();
         let state_1 = automata.current_state;
         let state_2 = automata.add_state();
-        let predicate = Box::new(&|c| c == 0x78);
+        let predicate = &|c| c == 0x78;
         automata.add_transition(state_1, predicate, state_2)
             .expect("Both states exist, this should be fine.");
 
@@ -259,11 +299,11 @@ mod tests {
         let state_2 = automata.add_state();
         let state_3 = automata.add_state();
 
-        automata.add_transition(state_1, Box::new(&|c| c == 0x78), state_2)
+        automata.add_transition(state_1, &|c| c == 0x78, state_2)
             .expect("Both states exist, this should be fine.");
-        automata.add_transition(state_1, Box::new(&|c| true), state_3)
+        automata.add_transition(state_1, &|c| true, state_3)
             .expect("Both states exist, this should be fine.");
-        automata.add_transition(state_2, Box::new(&|c| true), state_1)
+        automata.add_transition(state_2, &|c| true, state_1)
             .expect("Both states exist, this should be fine.");
 
         assert_eq!(state_1, automata.current_state);
