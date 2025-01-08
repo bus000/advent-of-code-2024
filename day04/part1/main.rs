@@ -94,11 +94,14 @@ fn count_xmas(array: Vec<Vec<u8>>) -> u32 {
             let column = &mut machines[rows + j];
             column.transition(array[i][j]);
 
-            // Diagonals going from left and upwards can be identified by their
-            // sum of indices.
+            // Diagonals going from left to right can be uniquely identified by
+            // their sum of indices. Try it on paper.
             let diag_1 = &mut machines[rows + columns + i + j];
             diag_1.transition(array[i][j]);
 
+            // Diagonals going from right to left can be identified by
+            // subtracting the 2 indices. We add (columns - 1) make indices
+            // start at 0.
             let index = columns + i - j - 1;
             let diag_2 = &mut machines[rows + columns + diagonals_half + index];
             diag_2.transition(array[i][j]);
@@ -163,19 +166,20 @@ impl Machine {
         let xmas2 = automata.add_state();
         let xmas3 = automata.add_state();
         let xmas4 = automata.add_state();
-
-        automata.add_transition(xmas1, &|c| c == b'M', xmas2)?;
-        automata.add_transition(xmas2, &|c| c == b'A', xmas3)?;
-        automata.add_transition(xmas3, &|c| c == b'S', xmas4)?;
-
         let samx1 = automata.add_state();
         let samx2 = automata.add_state();
         let samx3 = automata.add_state();
         let samx4 = automata.add_state();
 
+        automata.add_transition(xmas1, &|c| c == b'M', xmas2)?;
+        automata.add_transition(xmas2, &|c| c == b'A', xmas3)?;
+        automata.add_transition(xmas3, &|c| c == b'S', xmas4)?;
+        automata.add_transition(xmas4, &|c| c == b'A', samx2)?;
+
         automata.add_transition(samx1, &|c| c == b'A', samx2)?;
         automata.add_transition(samx2, &|c| c == b'M', samx3)?;
         automata.add_transition(samx3, &|c| c == b'X', samx4)?;
+        automata.add_transition(samx4, &|c| c == b'M', xmas2)?;
 
         // All states can start a new 'XMAS' or 'SAMX'.
         automata.add_transition_all(&|c| c == b'X', xmas1)?;
@@ -223,6 +227,25 @@ mod tests {
         let xmass = count_xmas(input);
 
         assert_eq!(xmass, 1);
+    }
+
+    /// Test that counting double horizontal XMAS + SAMX works.
+    #[test]
+    fn test_count_xmas_double_horizontal() {
+        let input = vec![
+            "..XMASAMX".bytes().collect(),
+            ".........".bytes().collect(),
+            "X.AS.S...".bytes().collect(),
+            "X.AS.S...".bytes().collect(),
+            "X.AS.S...".bytes().collect(),
+            "X.AS.S...".bytes().collect(),
+            "X.AS.S...".bytes().collect(),
+            "X.AS.S...".bytes().collect(),
+            ".X.......".bytes().collect()
+        ];
+        let xmass = count_xmas(input);
+
+        assert_eq!(xmass, 2);
     }
 
     /// Test that counting horizontal SAMX works.
