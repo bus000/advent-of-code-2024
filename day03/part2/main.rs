@@ -30,9 +30,9 @@
 use std::io;
 use std::io::Read;
 use std::process::ExitCode;
-use advent_of_code_2024::FiniteAutomata;
-use advent_of_code_2024::FiniteAutomataError;
-use advent_of_code_2024::StateRef;
+use aoc2024::finite_automata::FiniteAutomata;
+use aoc2024::finite_automata::FiniteAutomataError;
+use aoc2024::finite_automata::StateRef;
 
 fn main() -> ExitCode {
     let mut machine = Machine::build_machine();
