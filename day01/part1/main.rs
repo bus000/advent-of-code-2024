@@ -81,8 +81,8 @@ use nom::{
     Parser,
     IResult,
     multi::many1,
-    character::complete::{one_of, char},
-    combinator::{map_res, recognize, eof}
+    character::complete::char,
+    combinator::eof
 };
 
 fn main() {

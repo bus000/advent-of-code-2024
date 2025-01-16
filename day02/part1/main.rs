@@ -51,11 +51,10 @@
 use std::io;
 use aoc2024::nom_helpers::parse_u32;
 use nom::{
-    Parser,
     IResult,
-    multi::{many1, separated_list1},
-    character::complete::{one_of, char},
-    combinator::{map_res, recognize, eof}
+    multi::separated_list1,
+    character::complete::char,
+    combinator::eof
 };
 
 fn main() {

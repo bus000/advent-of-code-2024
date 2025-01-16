@@ -2,8 +2,8 @@ use nom::{
     Parser,
     IResult,
     multi::many1,
-    character::complete::{one_of, char},
-    combinator::{map_res, recognize, eof}
+    character::complete::{one_of},
+    combinator::{map_res, recognize}
 };
 
 /// Parse an unsigned integer from the input.
