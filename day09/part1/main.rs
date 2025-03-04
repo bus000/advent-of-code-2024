@@ -80,13 +80,26 @@
 use std::io;
 use std::io::Read;
 use std::fmt::Debug;
-use std::cmp::max;
-use std::collections::{HashMap, HashSet};
-use itertools::Itertools;
 use aoc2024::aoc::AocError;
 
 fn main() -> Result<(), AocError> {
+    let mut disk = read_disk()?;
+    disk.compact();
+    println!("{:?}", disk.checksum());
     return Ok(());
+}
+
+/// Read disk from stdin.
+fn read_disk() -> Result<Disk, AocError> {
+    let mut input = String::new();
+    let stdin = io::stdin();
+    let mut lock = stdin.lock();
+    lock.read_to_string(&mut input)?;
+    let ns = input.as_bytes().iter()
+        .filter(|b| **b != b'\n')
+        .map(|b| b - b'0')
+        .collect();
+    return Ok(Disk::init_disk(&ns));
 }
 
 /// A disk consisting of a list of files and a list of unoccupied spaces.
@@ -94,10 +107,37 @@ fn main() -> Result<(), AocError> {
 struct Disk {
 
     /// List of file blocks stored in increasing position.
-    file_blocks: Vec<Blocks>,
+    file_blocks: Vec<FileBlocks>,
 
     /// List of free blocks stored in decreasing position.
-    free_blocks: Vec<Blocks>,
+    free_blocks: Vec<FreeBlocks>,
+
+}
+
+/// A list of blocks that are part of a file.
+#[derive(PartialEq, Eq, Debug, Clone)]
+struct FileBlocks {
+
+    /// If this is a file then this is the ID of the file.
+    file_id: u64,
+
+    /// The index of the first block in the file system.
+    start_position: u64,
+
+    /// The number of file system blocks this block contains.
+    size: u64,
+
+}
+
+/// A list of blocks that are free.
+#[derive(PartialEq, Eq, Debug, Clone)]
+struct FreeBlocks {
+
+    /// The index of the first block in the file system.
+    start_position: u64,
+
+    /// The number of file system blocks this block contains.
+    size: u64,
 
 }
 
@@ -111,14 +151,13 @@ impl Disk {
         for i in 0..disk.len() {
             let size: u64 = disk[i].into();
             if i % 2 == 0 {
-                file_blocks.push(Blocks {
-                    file_id: Some((i / 2).try_into().unwrap()),
+                file_blocks.push(FileBlocks {
+                    file_id: (i / 2).try_into().unwrap(),
                     start_position: position,
                     size: size
                 });
             } else {
-                free_blocks.push(Blocks {
-                    file_id: None,
+                free_blocks.push(FreeBlocks {
                     start_position: position,
                     size: size
                 });
@@ -134,16 +173,11 @@ impl Disk {
     /// Compute the checksum of the disk.
     fn checksum(&self) -> u64 {
         let mut sum = 0;
-        for blocks in self.file_blocks.iter() {
-            match blocks.file_id {
-                Some(file_id) => {
-                    let start_position = blocks.start_position;
-                    let size = blocks.size;
-                    for pos in start_position..start_position + size {
-                        sum = sum + pos * file_id;
-                    }
-                },
-                _ => {}
+        for file in self.file_blocks.iter() {
+            let start_position = file.start_position;
+            let size = file.size;
+            for pos in start_position..start_position + size {
+                sum = sum + pos * file.file_id;
             }
         }
 
@@ -157,25 +191,17 @@ impl Disk {
     /// file to the first free position.
     fn compact(&mut self) {
         let mut file_blocks = Vec::with_capacity(self.file_blocks.len());
-        let mut space = 0;
+        let space = self.free_blocks.iter().map(|f| f.size).sum();
 
         loop {
             match (self.file_blocks.pop(), self.free_blocks.pop()) {
-                (None, None) => {
-                    break;
-                },
-                (None, Some(free)) => {
-                    space += free.size;
-                },
                 (Some(file), None) => {
                     file_blocks.push(file);
                 },
                 (Some(mut file), Some(mut free)) => {
                     if file.start_position < free.start_position {
-                        space += free.size;
                         self.file_blocks.push(file);
                     } else if free.size > file.size {
-                        space += file.size;
                         file.start_position = free.start_position;
                         free.start_position += file.size;
                         free.size -= file.size;
@@ -184,52 +210,37 @@ impl Disk {
                     } else if free.size == file.size {
                         file.start_position = free.start_position;
                         file_blocks.push(file);
-                        space += free.size;
                     } else {
-                        file_blocks.push(Blocks {
+                        file_blocks.push(FileBlocks {
                             file_id: file.file_id,
                             start_position: free.start_position,
                             size: free.size
                         });
                         file.size -= free.size;
-                        space += free.size;
                         self.file_blocks.push(file);
                     }
                 },
+                _ => {
+                    break;
+                }
             }
         }
 
         file_blocks.sort_by(|a, b| a.start_position.cmp(&b.start_position));
-        if space > 0 {
+        self.free_blocks = if space > 0 {
             let start_position = file_blocks
                 .last()
                 .map(|f| f.start_position + f.size)
                 .unwrap_or(0);
-            self.free_blocks = vec![Blocks {
-                file_id: None,
+            vec![FreeBlocks {
                 start_position: start_position,
                 size: space
-            }];
+            }]
         } else {
-            self.free_blocks = vec![];
-        }
+            vec![]
+        };
         self.file_blocks = file_blocks;
     }
-
-}
-
-/// A list of blocks that are part of a file.
-#[derive(PartialEq, Eq, Debug, Clone)]
-struct Blocks {
-
-    /// If this is a file then this is the ID of the file.
-    file_id: Option<u64>,
-
-    /// The index of the first block in the file system.
-    start_position: u64,
-
-    /// The number of file system blocks this block contains.
-    size: u64,
 
 }
 
@@ -253,30 +264,28 @@ mod tests {
         let disk = Disk::init_disk(&vec![1, 2, 3, 4, 5]);
         let expected = Disk {
             file_blocks: vec![
-                Blocks {
-                    file_id: Some(0),
+                FileBlocks {
+                    file_id: 0,
                     start_position: 0,
                     size: 1
                 },
-                Blocks {
-                    file_id: Some(1),
+                FileBlocks {
+                    file_id: 1,
                     start_position: 3,
                     size: 3
                 },
-                Blocks {
-                    file_id: Some(2),
+                FileBlocks {
+                    file_id: 2,
                     start_position: 10,
                     size: 5
                 },
             ],
             free_blocks: vec![
-                Blocks {
-                    file_id: None,
+                FreeBlocks {
                     start_position: 6,
                     size: 4
                 },
-                Blocks {
-                    file_id: None,
+                FreeBlocks {
                     start_position: 1,
                     size: 2
                 },
@@ -285,23 +294,23 @@ mod tests {
         assert_eq!(disk, expected);
     }
 
-    ///// Test that computing checksum works as expected.
-    //#[test]
-    //fn test_checksum_empty() {
-        //let disk = Disk::init_disk(&vec![]);
-        //assert_eq!(disk.checksum(), 0);
-    //}
+    /// Test that computing checksum works as expected.
+    #[test]
+    fn test_checksum_empty() {
+        let disk = Disk::init_disk(&vec![]);
+        assert_eq!(disk.checksum(), 0);
+    }
 
-    ///// Test that computing checksum works as expected.
-    //#[test]
-    //fn test_checksum() {
-        //let disk = Disk::init_disk(&vec![1, 2, 3, 4, 5]);
-        //let expected =
-            //0 * 0 + // First file.
-            //1 * 3 + 1 * 4 + 1 * 5 + // Second file.
-            //2 * 10 + 2 * 11 + 2 * 12 + 2 * 13 + 2 * 14; // Third file.
-        //assert_eq!(disk.checksum(), expected);
-    //}
+    /// Test that computing checksum works as expected.
+    #[test]
+    fn test_checksum() {
+        let disk = Disk::init_disk(&vec![1, 2, 3, 4, 5]);
+        let expected =
+            0 * 0 + // First file.
+            1 * 3 + 1 * 4 + 1 * 5 + // Second file.
+            2 * 10 + 2 * 11 + 2 * 12 + 2 * 13 + 2 * 14; // Third file.
+        assert_eq!(disk.checksum(), expected);
+    }
 
     /// Test that compacting an empty disk will do nothing.
     #[test]
@@ -320,30 +329,29 @@ mod tests {
         let mut disk = Disk::init_disk(&vec![1, 2, 3, 4, 5]);
         disk.compact();
         assert_eq!(disk.file_blocks, vec![
-            Blocks {
-                file_id: Some(0),
+            FileBlocks {
+                file_id: 0,
                 start_position: 0,
                 size: 1
             },
-            Blocks {
-                file_id: Some(2),
+            FileBlocks {
+                file_id: 2,
                 start_position: 1,
                 size: 2
             },
-            Blocks {
-                file_id: Some(1),
+            FileBlocks {
+                file_id: 1,
                 start_position: 3,
                 size: 3
             },
-            Blocks {
-                file_id: Some(2),
+            FileBlocks {
+                file_id: 2,
                 start_position: 6,
                 size: 3
             }
         ]);
         assert_eq!(disk.free_blocks, vec![
-            Blocks {
-                file_id: None,
+            FreeBlocks {
                 start_position: 9,
                 size: 6
             }
@@ -356,25 +364,24 @@ mod tests {
         let mut disk = Disk::init_disk(&vec![5, 4, 3, 2, 1]);
         disk.compact();
         assert_eq!(disk.file_blocks, vec![
-            Blocks {
-                file_id: Some(0),
+            FileBlocks {
+                file_id: 0,
                 start_position: 0,
                 size: 5
             },
-            Blocks {
-                file_id: Some(2),
+            FileBlocks {
+                file_id: 2,
                 start_position: 5,
                 size: 1
             },
-            Blocks {
-                file_id: Some(1),
+            FileBlocks {
+                file_id: 1,
                 start_position: 6,
                 size: 3
             },
         ]);
         assert_eq!(disk.free_blocks, vec![
-            Blocks {
-                file_id: None,
+            FreeBlocks {
                 start_position: 9,
                 size: 6
             }
