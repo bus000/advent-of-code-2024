@@ -93,42 +93,8 @@ fn main() -> Result<(), AocError> {
 #[derive(PartialEq, Eq, Debug)]
 struct Disk {
 
-    /// Ordered list of file blocks.
-    ///
-    /// Ordered by the start index.
-    files: Vec<FileBlock>,
-
-    /// Ordered list of free space on the disk.
-    ///
-    /// Ordered by the start index in reverse.
-    free: Vec<FreeSpace>
-
-}
-
-/// Represents part of a file on a disk.
-#[derive(PartialEq, Eq, Debug)]
-struct FileBlock {
-
-    /// The ID of the file the blocks belong to.
-    file_id: u64,
-
-    /// The index of the first block in the file system.
-    start_position: u64,
-
-    /// The number of file system blocks this block contains.
-    size: u64,
-
-}
-
-/// Represents free space on a disk.
-#[derive(PartialEq, Eq, Debug)]
-struct FreeSpace {
-
-    /// The index of the first free block.
-    start_position: u64,
-
-    /// The number of free file system blocks in this free space.
-    size: u64
+    /// Ordered list of blocks.
+    blocks: Vec<Blocks>,
 
 }
 
@@ -136,19 +102,19 @@ impl Disk {
 
     /// Initialize a new disk from a list of files and free spaces.
     fn init_disk(disk: &Vec<u8>) -> Self {
-        let mut files = Vec::with_capacity(disk.len() / 2);
-        let mut free = Vec::with_capacity(disk.len() / 2);
+        let mut blocks = Vec::with_capacity(disk.len());
         let mut position = 0;
         for i in 0..disk.len() {
             let size: u64 = disk[i].into();
             if i % 2 == 0 {
-                files.push(FileBlock {
-                    file_id: (i / 2).try_into().unwrap(),
+                blocks.push(Blocks {
+                    file_id: Some((i / 2).try_into().unwrap()),
                     start_position: position,
                     size: size
                 });
             } else {
-                free.push(FreeSpace {
+                blocks.push(Blocks {
+                    file_id: None,
                     start_position: position,
                     size: size
                 });
@@ -156,20 +122,23 @@ impl Disk {
 
             position = position + size;
         }
-        free.reverse();
 
-        return Disk {
-            files: files,
-            free: free
-        }
+        return Disk { blocks: blocks };
     }
 
     /// Compute the checksum of the disk.
     fn checksum(&self) -> u64 {
         let mut sum = 0;
-        for file in self.files.iter() {
-            for pos in file.start_position..file.start_position + file.size {
-                sum = sum + pos * file.file_id;
+        for blocks in self.blocks.iter() {
+            match blocks.file_id {
+                Some(file_id) => {
+                    let start_position = blocks.start_position;
+                    let size = blocks.size;
+                    for pos in start_position..start_position + size {
+                        sum = sum + pos * file_id;
+                    }
+                },
+                _ => {}
             }
         }
 
@@ -182,335 +151,282 @@ impl Disk {
     /// free spaces are at the end of the disk. Will begin by moving the last
     /// file to the first free position.
     fn compact(&mut self) {
-        while let Some((free, file)) = self.find_move_target() {
-            if free.size == file.size {
-                self.files.push()
+        //let frees = self.blocks.iter().filter(|x| x.is_free());
+        let mut files = self.blocks.iter().rev().filter(|x| x.is_file());
+        let mut blocks = Vec::with_capacity(self.blocks.len());
+        let mut next_file = files.next().clone();
+
+        for block in self.blocks.iter() {
+            match block.file_id {
+                None => {
+                    let mut free = block.clone();
+                    while free.size > 0 && next_file.is_some() {
+                        let file = next_file.unwrap();
+                        if free.start_position > file.start_position {
+                            blocks.push(free);
+                            next_file = None;
+                        } else if free.size >= file.size {
+                            blocks.push(Blocks {
+                                file_id: file.file_id,
+                                start_position: free.start_position,
+                                size: file.size
+                            })
+                            free.start_position += file.size;
+                            free.size -= file.size;
+                            file = files.next().clone();
+                        } else {
+                            blocks.push
+                        }
+                    }
+                },
+                Some(_) => {
+                    blocks.push(block);
+                }
+            }
+
+
+
+
+
+            match (block.file_id, next_file) {
+                //(Some(_), _) => {
+                    //blocks.push(block.clone()); // TODO
+                //},
+                (None, Some(file)) => {
+                    let mut free = block.clone();
+                    while free.size > 0 {
+                        if free.start_position > file.start_position {
+                            file = None;
+                        } else if free.size >= file.size {
+                            blocks.push(Blocks {
+                                file_id: file.file_id,
+                                start_position: free.start_position,
+                                size: file.size
+                            })
+                            free.start_position += file.size;
+                            free.size -= file.size;
+                            file = files.next().clone();
+                        } else {
+                            blocks.push
+                        }
+                    }
+                }
+                _ => {
+                    blocks.push(block.clone());
+                }
             }
         }
-    }
 
-    /// Locate the last file and the first free space to host that file.
-    ///
-    /// If either the list of files or list of free spaces are empty None is
-    /// returned.
-    fn find_move_target(&mut self) -> Option<(FreeSpace, FileBlock)> {
-        let free = self.free.pop()?;
-        if let Some(file) = self.files.pop() {
-            if free.start_position < file.start_position {
-                return Some((free, file));
-            }
-        }
-
-        self.free.push(free);
-        return None;
-        //let file = self.files.pop();
-        //match self.files.pop() {
-            //Some(file) => {
-                //if free.start_position >= file.start_position {
-                    //self.free.push(free);
-                    //return None;
-                //} else {
-                    //return Some((free, file));
-                //}
-            //},
-            //None => {
-                //self.free.push(free);
-                //return None;
-            //}
-        //}
-    }
-
-    /// Find the first free space on the disk.
-    fn first_free(&self) -> Option<&FreeSpace> {
-        return self.free.last();
-    }
-
-    /// Find the last file on the disk.
-    fn last_file(&self) -> Option<&FileBlock> {
-        return self.files.last();
+        self.blocks = blocks;
     }
 
 }
 
-//fn compute_checksum(disk: &mut Vec<u8>) -> Result<u64, AocError> {
-    //let disk_size: u64 = disk.len()
-        //.try_into()
-        //.map_err(|_| AocError::UnexpectedError(
-            //"Cannot process arrays with more than u64 max elements.".to_string()
-        //))?;
-    //if disk_size == 0 {
-        //return Ok(0);
-    //}
-    //let mut file_pointer = disk_size - 1;
-    //let mut position = 0;
-    //let mut sum = 0;
-    //for i in 0..disk_size {
-        //let file_size: u64 = disk[file_pointer].into();
-        //let free_size: u64 = disk[free_pointer].into();
-        //let file_id = file_pointer / 2;
-        //let 
-    //}
+/// A list of blocks that are part of a file.
+#[derive(PartialEq, Eq, Debug, Clone)]
+struct Blocks {
 
+    /// If this is a file then this is the ID of the file.
+    file_id: Option<u64>,
 
+    /// The index of the first block in the file system.
+    start_position: u64,
 
+    /// The number of file system blocks this block contains.
+    size: u64,
 
-    //let file = disk_size - 1;
-    //let mut checksum = 0;
+}
 
-    //for i in 0..disk_size {
-        //if i >= file {
-            //return Ok(checksum);
-        //} else if i % 2 == 0 {
-            //let file_id = i / 2;
-            //let ix: usize = i.try_into().unwrap();
-            //let blocks: u64 = disk[ix].into();
-            //checksum = checksum + file_id * file_id * blocks;
-        //} else {
-        //}
-    //}
+impl Blocks {
 
-    //panic!("Should be unreachable.");
-//}
+    fn is_file(&self) -> bool {
+        return self.file_id.is_some();
+    }
 
-//fn compute_checksum(disk: &Vec<u8>) -> Result<u64, AocError> {
-    //let disk_size: u64 = disk.len()
-        //.try_into()
-        //.map_err(|_| AocError::UnexpectedError(
-            //"Cannot process arrays with more than u64 max elements.".to_string()
-        //))?;
-    //if disk_size == 0 {
-        //return Ok(0);
-    //}
-    //let file = disk_size - 1;
-    //let mut checksum = 0;
-
-    //for i in 0..disk_size {
-        //if i >= file {
-            //return Ok(checksum);
-        //} else if i % 2 == 0 {
-            //let file_id = i / 2;
-            //let ix: usize = i.try_into().unwrap();
-            //let blocks: u64 = disk[ix].into();
-            //checksum = checksum + file_id * file_id * blocks;
-        //} else {
-        //}
-    //}
-
-    //panic!("Should be unreachable.");
-//}
-
-//struct Disk {
-
-    ///// List of all files.
-    //files: &Vec<u8>,
-
-    ///// List of free spaces between files.
-    //space: &Vec<u8>
-
-//}
-
-//impl BlockOrderer {
-
-    //fn reorder(disk: &mut Disk) {
-        //let file_pointer = disk.files.len() - 1;
-        //let free_pointer = 0;
-
-        //loop {
-            //if forward >= backwards {
-                //return checksum;
-            //}
-
-
-        //}
-    //}
-
-//}
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Test that initializing a new disk works as expected.
-    #[test]
-    fn test_init_disk_empty() {
-        let disk = Disk::init_disk(&vec![]);
-        assert_eq!(disk, Disk {
-            files: vec![],
-            free: vec![]
-        });
-    }
+    ///// Test that initializing a new disk works as expected.
+    //#[test]
+    //fn test_init_disk_empty() {
+        //let disk = Disk::init_disk(&vec![]);
+        //assert_eq!(disk, Disk {
+            //blocks: vec![]
+        //});
+    //}
 
-    /// Test that initializing a new disk works as expected.
-    #[test]
-    fn test_init_disk() {
-        let disk = Disk::init_disk(&vec![1, 2, 3, 4, 5]);
-        let expected = Disk {
-            files: vec![
-                FileBlock {
-                    file_id: 0,
-                    start_position: 0,
-                    size: 1
-                },
-                FileBlock {
-                    file_id: 1,
-                    start_position: 3,
-                    size: 3
-                },
-                FileBlock {
-                    file_id: 2,
-                    start_position: 10,
-                    size: 5
-                }
-            ],
-            free: vec![
-                FreeSpace {
-                    start_position: 6,
-                    size: 4
-                },
-                FreeSpace {
-                    start_position: 1,
-                    size: 2
-                }
-            ]
-        };
-        assert_eq!(disk, expected);
-    }
+    ///// Test that initializing a new disk works as expected.
+    //#[test]
+    //fn test_init_disk() {
+        //let disk = Disk::init_disk(&vec![1, 2, 3, 4, 5]);
+        //let expected = Disk {
+            //blocks: vec![
+                //Blocks::File {
+                    //file_id: 0,
+                    //start_position: 0,
+                    //size: 1
+                //},
+                //Blocks::Free {
+                    //start_position: 1,
+                    //size: 2
+                //},
+                //Blocks::File {
+                    //file_id: 1,
+                    //start_position: 3,
+                    //size: 3
+                //},
+                //Blocks::Free {
+                    //start_position: 6,
+                    //size: 4
+                //},
+                //Blocks::File {
+                    //file_id: 2,
+                    //start_position: 10,
+                    //size: 5
+                //},
+            //],
+        //};
+        //assert_eq!(disk, expected);
+    //}
 
-    /// Test that computing checksum works as expected.
-    #[test]
-    fn test_checksum_empty() {
-        let disk = Disk::init_disk(&vec![]);
-        assert_eq!(disk.checksum(), 0);
-    }
+    ///// Test that computing checksum works as expected.
+    //#[test]
+    //fn test_checksum_empty() {
+        //let disk = Disk::init_disk(&vec![]);
+        //assert_eq!(disk.checksum(), 0);
+    //}
 
-    /// Test that computing checksum works as expected.
-    #[test]
-    fn test_checksum() {
-        let disk = Disk::init_disk(&vec![1, 2, 3, 4, 5]);
-        let expected =
-            0 * 0 + // First file.
-            1 * 3 + 1 * 4 + 1 * 5 + // Second file.
-            2 * 10 + 2 * 11 + 2 * 12 + 2 * 13 + 2 * 14; // Third file.
-        assert_eq!(disk.checksum(), expected);
-    }
+    ///// Test that computing checksum works as expected.
+    //#[test]
+    //fn test_checksum() {
+        //let disk = Disk::init_disk(&vec![1, 2, 3, 4, 5]);
+        //let expected =
+            //0 * 0 + // First file.
+            //1 * 3 + 1 * 4 + 1 * 5 + // Second file.
+            //2 * 10 + 2 * 11 + 2 * 12 + 2 * 13 + 2 * 14; // Third file.
+        //assert_eq!(disk.checksum(), expected);
+    //}
 
-    /// Test that empty disks have no move targets.
-    #[test]
-    fn test_find_move_target_empty() {
-        let disk = Disk::init_disk(&vec![]);
-        assert_eq!(disk.find_move_target(), None);
-    }
+    ///// Test that empty disks have no move targets.
+    //#[test]
+    //fn test_find_move_target_empty() {
+        //let disk = Disk::init_disk(&vec![]);
+        //assert_eq!(disk.find_move_target(), None);
+    //}
 
-    /// Test that disks that contain only files have no move targets.
-    #[test]
-    fn test_find_move_target_only_files() {
-        let disk = Disk {
-            files: vec![
-                FileBlock {
-                    file_id: 0,
-                    start_position: 0,
-                    size: 2
-                },
-                FileBlock {
-                    file_id: 1,
-                    start_position: 2,
-                    size: 3
-                },
-            ],
-            free: vec![]
-        };
-        assert_eq!(disk.find_move_target(), None);
-    }
+    ///// Test that disks that contain only files have no move targets.
+    //#[test]
+    //fn test_find_move_target_only_files() {
+        //let disk = Disk {
+            //files: vec![
+                //FileBlock {
+                    //file_id: 0,
+                    //start_position: 0,
+                    //size: 2
+                //},
+                //FileBlock {
+                    //file_id: 1,
+                    //start_position: 2,
+                    //size: 3
+                //},
+            //],
+            //free: vec![]
+        //};
+        //assert_eq!(disk.find_move_target(), None);
+    //}
 
-    /// Test that disks that contain only free space have no move targets.
-    #[test]
-    fn test_find_move_target_only_free() {
-        let disk = Disk {
-            files: vec![],
-            free: vec![
-                FreeSpace {
-                    start_position: 10000,
-                    size: 1
-                },
-                FreeSpace {
-                    start_position: 0,
-                    size: 10000
-                },
-            ]
-        };
-        assert_eq!(disk.find_move_target(), None);
-    }
+    ///// Test that disks that contain only free space have no move targets.
+    //#[test]
+    //fn test_find_move_target_only_free() {
+        //let disk = Disk {
+            //files: vec![],
+            //free: vec![
+                //FreeSpace {
+                    //start_position: 10000,
+                    //size: 1
+                //},
+                //FreeSpace {
+                    //start_position: 0,
+                    //size: 10000
+                //},
+            //]
+        //};
+        //assert_eq!(disk.find_move_target(), None);
+    //}
 
-    /// Test that disks that contain only free space at the end and files at
-    /// the start has no move targets.
-    #[test]
-    fn test_find_move_target_only_free_at_end() {
-        let disk = Disk {
-            files: vec![
-                FileBlock {
-                    file_id: 0,
-                    start_position: 0,
-                    size: 2
-                },
-                FileBlock {
-                    file_id: 1,
-                    start_position: 2,
-                    size: 3
-                },
-            ],
-            free: vec![
-                FreeSpace {
-                    start_position: 6,
-                    size: 2
-                },
-                FreeSpace {
-                    start_position: 5,
-                    size: 1
-                },
-            ]
-        };
-        assert_eq!(disk.find_move_target(), None);
-    }
+    ///// Test that disks that contain only free space at the end and files at
+    ///// the start has no move targets.
+    //#[test]
+    //fn test_find_move_target_only_free_at_end() {
+        //let disk = Disk {
+            //files: vec![
+                //FileBlock {
+                    //file_id: 0,
+                    //start_position: 0,
+                    //size: 2
+                //},
+                //FileBlock {
+                    //file_id: 1,
+                    //start_position: 2,
+                    //size: 3
+                //},
+            //],
+            //free: vec![
+                //FreeSpace {
+                    //start_position: 6,
+                    //size: 2
+                //},
+                //FreeSpace {
+                    //start_position: 5,
+                    //size: 1
+                //},
+            //]
+        //};
+        //assert_eq!(disk.find_move_target(), None);
+    //}
 
-    /// Test that disks will find the correct move target (first free and last
-    /// file).
-    #[test]
-    fn test_find_move_target() {
-        let disk = Disk {
-            files: vec![
-                FileBlock {
-                    file_id: 0,
-                    start_position: 0,
-                    size: 2
-                },
-                FileBlock {
-                    file_id: 1,
-                    start_position: 5,
-                    size: 3
-                },
-            ],
-            free: vec![
-                FreeSpace {
-                    start_position: 3,
-                    size: 2
-                },
-                FreeSpace {
-                    start_position: 2,
-                    size: 1
-                },
-            ]
-        };
-        assert_eq!(disk.find_move_target(), Some((
-                &FreeSpace {
-                    start_position: 2,
-                    size: 1
-                },
-                &FileBlock {
-                    file_id: 1,
-                    start_position: 5,
-                    size: 3
-                })));
-    }
+    ///// Test that disks will find the correct move target (first free and last
+    ///// file).
+    //#[test]
+    //fn test_find_move_target() {
+        //let disk = Disk {
+            //files: vec![
+                //FileBlock {
+                    //file_id: 0,
+                    //start_position: 0,
+                    //size: 2
+                //},
+                //FileBlock {
+                    //file_id: 1,
+                    //start_position: 5,
+                    //size: 3
+                //},
+            //],
+            //free: vec![
+                //FreeSpace {
+                    //start_position: 3,
+                    //size: 2
+                //},
+                //FreeSpace {
+                    //start_position: 2,
+                    //size: 1
+                //},
+            //]
+        //};
+        //assert_eq!(disk.find_move_target(), Some((
+                //&FreeSpace {
+                    //start_position: 2,
+                    //size: 1
+                //},
+                //&FileBlock {
+                    //file_id: 1,
+                    //start_position: 5,
+                    //size: 3
+                //})));
+    //}
 
     ///// Test that the empty disk has a 0 checksum.
     //#[test]
