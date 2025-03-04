@@ -93,8 +93,11 @@ fn main() -> Result<(), AocError> {
 #[derive(PartialEq, Eq, Debug)]
 struct Disk {
 
-    /// Ordered list of blocks.
-    blocks: Vec<Blocks>,
+    /// List of file blocks stored in increasing position.
+    file_blocks: Vec<Blocks>,
+
+    /// List of free blocks stored in decreasing position.
+    free_blocks: Vec<Blocks>,
 
 }
 
@@ -102,18 +105,19 @@ impl Disk {
 
     /// Initialize a new disk from a list of files and free spaces.
     fn init_disk(disk: &Vec<u8>) -> Self {
-        let mut blocks = Vec::with_capacity(disk.len());
+        let mut file_blocks = Vec::with_capacity(disk.len() / 2);
+        let mut free_blocks = Vec::with_capacity(disk.len() / 2);
         let mut position = 0;
         for i in 0..disk.len() {
             let size: u64 = disk[i].into();
             if i % 2 == 0 {
-                blocks.push(Blocks {
+                file_blocks.push(Blocks {
                     file_id: Some((i / 2).try_into().unwrap()),
                     start_position: position,
                     size: size
                 });
             } else {
-                blocks.push(Blocks {
+                free_blocks.push(Blocks {
                     file_id: None,
                     start_position: position,
                     size: size
@@ -123,13 +127,14 @@ impl Disk {
             position = position + size;
         }
 
-        return Disk { blocks: blocks };
+        free_blocks.reverse();
+        return Disk { file_blocks: file_blocks, free_blocks: free_blocks };
     }
 
     /// Compute the checksum of the disk.
     fn checksum(&self) -> u64 {
         let mut sum = 0;
-        for blocks in self.blocks.iter() {
+        for blocks in self.file_blocks.iter() {
             match blocks.file_id {
                 Some(file_id) => {
                     let start_position = blocks.start_position;
@@ -151,73 +156,64 @@ impl Disk {
     /// free spaces are at the end of the disk. Will begin by moving the last
     /// file to the first free position.
     fn compact(&mut self) {
-        //let frees = self.blocks.iter().filter(|x| x.is_free());
-        let mut files = self.blocks.iter().rev().filter(|x| x.is_file());
-        let mut blocks = Vec::with_capacity(self.blocks.len());
-        let mut next_file = files.next().clone();
+        let mut file_blocks = Vec::with_capacity(self.file_blocks.len());
+        let mut space = 0;
 
-        for block in self.blocks.iter() {
-            match block.file_id {
-                None => {
-                    let mut free = block.clone();
-                    while free.size > 0 && next_file.is_some() {
-                        let file = next_file.unwrap();
-                        if free.start_position > file.start_position {
-                            blocks.push(free);
-                            next_file = None;
-                        } else if free.size >= file.size {
-                            blocks.push(Blocks {
-                                file_id: file.file_id,
-                                start_position: free.start_position,
-                                size: file.size
-                            })
-                            free.start_position += file.size;
-                            free.size -= file.size;
-                            file = files.next().clone();
-                        } else {
-                            blocks.push
-                        }
+        loop {
+            match (self.file_blocks.pop(), self.free_blocks.pop()) {
+                (None, None) => {
+                    break;
+                },
+                (None, Some(free)) => {
+                    space += free.size;
+                },
+                (Some(file), None) => {
+                    file_blocks.push(file);
+                },
+                (Some(mut file), Some(mut free)) => {
+                    if file.start_position < free.start_position {
+                        space += free.size;
+                        self.file_blocks.push(file);
+                    } else if free.size > file.size {
+                        space += file.size;
+                        file.start_position = free.start_position;
+                        free.start_position += file.size;
+                        free.size -= file.size;
+                        file_blocks.push(file);
+                        self.free_blocks.push(free);
+                    } else if free.size == file.size {
+                        file.start_position = free.start_position;
+                        file_blocks.push(file);
+                        space += free.size;
+                    } else {
+                        file_blocks.push(Blocks {
+                            file_id: file.file_id,
+                            start_position: free.start_position,
+                            size: free.size
+                        });
+                        file.size -= free.size;
+                        space += free.size;
+                        self.file_blocks.push(file);
                     }
                 },
-                Some(_) => {
-                    blocks.push(block);
-                }
-            }
-
-
-
-
-
-            match (block.file_id, next_file) {
-                //(Some(_), _) => {
-                    //blocks.push(block.clone()); // TODO
-                //},
-                (None, Some(file)) => {
-                    let mut free = block.clone();
-                    while free.size > 0 {
-                        if free.start_position > file.start_position {
-                            file = None;
-                        } else if free.size >= file.size {
-                            blocks.push(Blocks {
-                                file_id: file.file_id,
-                                start_position: free.start_position,
-                                size: file.size
-                            })
-                            free.start_position += file.size;
-                            free.size -= file.size;
-                            file = files.next().clone();
-                        } else {
-                            blocks.push
-                        }
-                    }
-                }
-                _ => {
-                    blocks.push(block.clone());
-                }
             }
         }
 
-        self.blocks = blocks;
+        file_blocks.sort_by(|a, b| a.start_position.cmp(&b.start_position));
+        if space > 0 {
+            let start_position = file_blocks
+                .last()
+                .map(|f| f.start_position + f.size)
+                .unwrap_or(0);
+            self.free_blocks = vec![Blocks {
+                file_id: None,
+                start_position: start_position,
+                size: space
+            }];
+        } else {
+            self.free_blocks = vec![];
+        }
+        self.file_blocks = file_blocks;
     }
 
 }
@@ -237,60 +233,57 @@ struct Blocks {
 
 }
 
-impl Blocks {
-
-    fn is_file(&self) -> bool {
-        return self.file_id.is_some();
-    }
-
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    ///// Test that initializing a new disk works as expected.
-    //#[test]
-    //fn test_init_disk_empty() {
-        //let disk = Disk::init_disk(&vec![]);
-        //assert_eq!(disk, Disk {
-            //blocks: vec![]
-        //});
-    //}
+    /// Test that initializing a new disk works as expected.
+    #[test]
+    fn test_init_disk_empty() {
+        let disk = Disk::init_disk(&vec![]);
+        assert_eq!(disk, Disk {
+            file_blocks: vec![],
+            free_blocks: vec![]
+        });
+    }
 
-    ///// Test that initializing a new disk works as expected.
-    //#[test]
-    //fn test_init_disk() {
-        //let disk = Disk::init_disk(&vec![1, 2, 3, 4, 5]);
-        //let expected = Disk {
-            //blocks: vec![
-                //Blocks::File {
-                    //file_id: 0,
-                    //start_position: 0,
-                    //size: 1
-                //},
-                //Blocks::Free {
-                    //start_position: 1,
-                    //size: 2
-                //},
-                //Blocks::File {
-                    //file_id: 1,
-                    //start_position: 3,
-                    //size: 3
-                //},
-                //Blocks::Free {
-                    //start_position: 6,
-                    //size: 4
-                //},
-                //Blocks::File {
-                    //file_id: 2,
-                    //start_position: 10,
-                    //size: 5
-                //},
-            //],
-        //};
-        //assert_eq!(disk, expected);
-    //}
+    /// Test that initializing a new disk works as expected.
+    #[test]
+    fn test_init_disk() {
+        let disk = Disk::init_disk(&vec![1, 2, 3, 4, 5]);
+        let expected = Disk {
+            file_blocks: vec![
+                Blocks {
+                    file_id: Some(0),
+                    start_position: 0,
+                    size: 1
+                },
+                Blocks {
+                    file_id: Some(1),
+                    start_position: 3,
+                    size: 3
+                },
+                Blocks {
+                    file_id: Some(2),
+                    start_position: 10,
+                    size: 5
+                },
+            ],
+            free_blocks: vec![
+                Blocks {
+                    file_id: None,
+                    start_position: 6,
+                    size: 4
+                },
+                Blocks {
+                    file_id: None,
+                    start_position: 1,
+                    size: 2
+                },
+            ],
+        };
+        assert_eq!(disk, expected);
+    }
 
     ///// Test that computing checksum works as expected.
     //#[test]
@@ -310,136 +303,82 @@ mod tests {
         //assert_eq!(disk.checksum(), expected);
     //}
 
-    ///// Test that empty disks have no move targets.
-    //#[test]
-    //fn test_find_move_target_empty() {
-        //let disk = Disk::init_disk(&vec![]);
-        //assert_eq!(disk.find_move_target(), None);
-    //}
+    /// Test that compacting an empty disk will do nothing.
+    #[test]
+    fn test_compact_empty_disk() {
+        let mut disk = Disk::init_disk(&vec![]);
+        disk.compact();
+        assert_eq!(disk, Disk {
+            file_blocks: vec![],
+            free_blocks: vec![]
+        });
+    }
 
-    ///// Test that disks that contain only files have no move targets.
-    //#[test]
-    //fn test_find_move_target_only_files() {
-        //let disk = Disk {
-            //files: vec![
-                //FileBlock {
-                    //file_id: 0,
-                    //start_position: 0,
-                    //size: 2
-                //},
-                //FileBlock {
-                    //file_id: 1,
-                    //start_position: 2,
-                    //size: 3
-                //},
-            //],
-            //free: vec![]
-        //};
-        //assert_eq!(disk.find_move_target(), None);
-    //}
+    /// Test that compacting a non empty disk will move files accordingly.
+    #[test]
+    fn test_compact_disk_1() {
+        let mut disk = Disk::init_disk(&vec![1, 2, 3, 4, 5]);
+        disk.compact();
+        assert_eq!(disk.file_blocks, vec![
+            Blocks {
+                file_id: Some(0),
+                start_position: 0,
+                size: 1
+            },
+            Blocks {
+                file_id: Some(2),
+                start_position: 1,
+                size: 2
+            },
+            Blocks {
+                file_id: Some(1),
+                start_position: 3,
+                size: 3
+            },
+            Blocks {
+                file_id: Some(2),
+                start_position: 6,
+                size: 3
+            }
+        ]);
+        assert_eq!(disk.free_blocks, vec![
+            Blocks {
+                file_id: None,
+                start_position: 9,
+                size: 6
+            }
+        ]);
+    }
 
-    ///// Test that disks that contain only free space have no move targets.
-    //#[test]
-    //fn test_find_move_target_only_free() {
-        //let disk = Disk {
-            //files: vec![],
-            //free: vec![
-                //FreeSpace {
-                    //start_position: 10000,
-                    //size: 1
-                //},
-                //FreeSpace {
-                    //start_position: 0,
-                    //size: 10000
-                //},
-            //]
-        //};
-        //assert_eq!(disk.find_move_target(), None);
-    //}
-
-    ///// Test that disks that contain only free space at the end and files at
-    ///// the start has no move targets.
-    //#[test]
-    //fn test_find_move_target_only_free_at_end() {
-        //let disk = Disk {
-            //files: vec![
-                //FileBlock {
-                    //file_id: 0,
-                    //start_position: 0,
-                    //size: 2
-                //},
-                //FileBlock {
-                    //file_id: 1,
-                    //start_position: 2,
-                    //size: 3
-                //},
-            //],
-            //free: vec![
-                //FreeSpace {
-                    //start_position: 6,
-                    //size: 2
-                //},
-                //FreeSpace {
-                    //start_position: 5,
-                    //size: 1
-                //},
-            //]
-        //};
-        //assert_eq!(disk.find_move_target(), None);
-    //}
-
-    ///// Test that disks will find the correct move target (first free and last
-    ///// file).
-    //#[test]
-    //fn test_find_move_target() {
-        //let disk = Disk {
-            //files: vec![
-                //FileBlock {
-                    //file_id: 0,
-                    //start_position: 0,
-                    //size: 2
-                //},
-                //FileBlock {
-                    //file_id: 1,
-                    //start_position: 5,
-                    //size: 3
-                //},
-            //],
-            //free: vec![
-                //FreeSpace {
-                    //start_position: 3,
-                    //size: 2
-                //},
-                //FreeSpace {
-                    //start_position: 2,
-                    //size: 1
-                //},
-            //]
-        //};
-        //assert_eq!(disk.find_move_target(), Some((
-                //&FreeSpace {
-                    //start_position: 2,
-                    //size: 1
-                //},
-                //&FileBlock {
-                    //file_id: 1,
-                    //start_position: 5,
-                    //size: 3
-                //})));
-    //}
-
-    ///// Test that the empty disk has a 0 checksum.
-    //#[test]
-    //fn test_compute_checksum() {
-        //let disk = vec![];
-        //assert_eq!(Ok(0), compute_checksum(disk));
-    //}
-
-    ///// Test that the singleton disk has a 0 checksum.
-    //#[test]
-    //fn test_compute_checksum() {
-        //let disk = vec![9];
-        //assert_eq!(Ok(0), compute_checksum(disk));
-    //}
+    /// Test that compacting a non empty disk will move files accordingly.
+    #[test]
+    fn test_compact_disk_2() {
+        let mut disk = Disk::init_disk(&vec![5, 4, 3, 2, 1]);
+        disk.compact();
+        assert_eq!(disk.file_blocks, vec![
+            Blocks {
+                file_id: Some(0),
+                start_position: 0,
+                size: 5
+            },
+            Blocks {
+                file_id: Some(2),
+                start_position: 5,
+                size: 1
+            },
+            Blocks {
+                file_id: Some(1),
+                start_position: 6,
+                size: 3
+            },
+        ]);
+        assert_eq!(disk.free_blocks, vec![
+            Blocks {
+                file_id: None,
+                start_position: 9,
+                size: 6
+            }
+        ]);
+    }
 
 }
