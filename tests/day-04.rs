@@ -4,7 +4,7 @@ use assert_cmd::Command;
 /// Test that if we pass no lines we will get back 0.
 #[test]
 fn test_part_1_empty_input() {
-    Command::cargo_bin("day02_1")
+    Command::cargo_bin("day04_1")
         .unwrap()
         .assert()
         .success()
@@ -14,39 +14,44 @@ fn test_part_1_empty_input() {
 /// Test that if we pass example input we will generate expected output.
 #[test]
 fn test_part_1_example_input() {
-    let input = concat!(
-        "7 6 4 2 1\n",
-        "1 2 7 8 9\n",
-        "9 7 6 2 1\n",
-        "1 3 2 4 5\n",
-        "8 6 4 4 1\n",
-        "1 3 6 7 9\n");
+    let input = concat![
+        "MMMSXXMASM\n",
+        "MSAMXMSMSA\n",
+        "AMXSXMAAMM\n",
+        "MSAMASMSMX\n",
+        "XMASAMXAMM\n",
+        "XXAMMXXAMA\n",
+        "SMSMSASXSS\n",
+        "SAXAMASAAA\n",
+        "MAMMMXMMMM\n",
+        "MXMXAXMASX"
+    ];
 
-    Command::cargo_bin("day02_1")
+    Command::cargo_bin("day04_1")
         .unwrap()
         .write_stdin(input)
         .assert()
         .success()
-        .stdout(predicates::ord::eq("2\n"));
+        .stdout(predicates::ord::eq("18\n"));
 }
 
 /// Test that if we pass actual input we will compute expected output.
 #[test]
 fn test_part_1_actual_input() {
-    let input: String = fs::read_to_string("inputs/2.txt").unwrap();
+    let input: String = fs::read_to_string("inputs/04.txt").unwrap();
 
-    Command::cargo_bin("day02_1")
+    Command::cargo_bin("day04_1")
         .unwrap()
         .write_stdin(input)
         .assert()
         .success()
-        .stdout(predicates::ord::eq("407\n"));
+        .stdout(predicates::ord::eq("2551\n"));
 }
 
 /// Test that if we pass no lines we will get back 0.
 #[test]
 fn test_part_2_empty_input() {
-    Command::cargo_bin("day02_2")
+    Command::cargo_bin("day04_2")
         .unwrap()
         .assert()
         .success()
@@ -56,31 +61,36 @@ fn test_part_2_empty_input() {
 /// Test that if we pass example input we will generate expected output.
 #[test]
 fn test_part_2_example_input() {
-    let input = concat!(
-        "7 6 4 2 1\n",
-        "1 2 7 8 9\n",
-        "9 7 6 2 1\n",
-        "1 3 2 4 5\n",
-        "8 6 4 4 1\n",
-        "1 3 6 7 9\n");
+    let input = concat![
+        "MMMSXXMASM\n",
+        "MSAMXMSMSA\n",
+        "AMXSXMAAMM\n",
+        "MSAMASMSMX\n",
+        "XMASAMXAMM\n",
+        "XXAMMXXAMA\n",
+        "SMSMSASXSS\n",
+        "SAXAMASAAA\n",
+        "MAMMMXMMMM\n",
+        "MXMXAXMASX"
+    ];
 
-    Command::cargo_bin("day02_2")
+    Command::cargo_bin("day04_2")
         .unwrap()
         .write_stdin(input)
         .assert()
         .success()
-        .stdout(predicates::ord::eq("4\n"));
+        .stdout(predicates::ord::eq("9\n"));
 }
 
 /// Test that if we pass actual input we will compute expected output.
 #[test]
 fn test_part_2_actual_input() {
-    let input: String = fs::read_to_string("inputs/2.txt").unwrap();
+    let input: String = fs::read_to_string("inputs/04.txt").unwrap();
 
-    Command::cargo_bin("day02_2")
+    Command::cargo_bin("day04_2")
         .unwrap()
         .write_stdin(input)
         .assert()
         .success()
-        .stdout(predicates::ord::eq("459\n"));
+        .stdout(predicates::ord::eq("1985\n"));
 }

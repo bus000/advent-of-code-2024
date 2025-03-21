@@ -27,7 +27,7 @@ fn test_part_1_example_input() {
 /// Test that if we pass actual input we will compute expected output.
 #[test]
 fn test_part_1_actual_input() {
-    let input: String = fs::read_to_string("inputs/7.txt").unwrap();
+    let input: String = fs::read_to_string("inputs/07.txt").unwrap();
 
     Command::cargo_bin("day07_1")
         .unwrap()
@@ -63,7 +63,7 @@ fn test_part_2_example_input() {
 /// Test that if we pass actual input we will compute expected output.
 #[test]
 fn test_part_2_actual_input() {
-    let input: String = fs::read_to_string("inputs/7.txt").unwrap();
+    let input: String = fs::read_to_string("inputs/07.txt").unwrap();
 
     Command::cargo_bin("day07_2")
         .unwrap()
