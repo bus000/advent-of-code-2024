@@ -50,5 +50,5 @@ fn test_part_2_actual_input() {
         .write_stdin(input)
         .assert()
         .success()
-        .stdout(predicates::ord::eq("955\n"));
+        .stdout(predicates::ord::eq("6353648390778\n"));
 }
