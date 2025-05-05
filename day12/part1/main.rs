@@ -131,7 +131,7 @@ fn main() -> Result<(), AocError> {
 }
 
 /// A field consists of a perimeter and an area.
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 struct Field {
 
     /// The perimeter of the field.
@@ -145,10 +145,10 @@ struct Field {
 impl Field {
 
     /// Construct a new field.
-    fn new(perimeter: u64) -> Self {
+    fn new() -> Self {
         return Field {
-            perimeter: perimeter,
-            area: 1
+            perimeter: 0,
+            area: 0
         };
     }
 }
@@ -252,38 +252,78 @@ impl Plots {
         return Plots::parse(&mut stdin_lock);
     }
 
-    /// Annotate all plots as part of a field and return the list of computed
-    /// fields.
-    fn find_fields(&mut self) -> Vec<Field> {
-        let mut fields = Vec::new();
+    fn annotate_plots(&mut self) -> usize {
+        let mut field_n = 0;
         for y in 0..self.max_y + 1 {
             for x in 0..self.max_x + 1 {
-                let crop = self.plots[y][x].crop;
-                let mut field_id = None;
-                let mut perimeter = 0;
-                for neighbour in self.neighbours(x, y) {
-                    if crop == neighbour.crop {
-                        field_id = field_id.or(neighbour.field_id);
-                    } else {
-                        perimeter += 1;
-                    }
-                }
-
-                if let Some(f) = field_id {
-                    println!("Plot ({:?}, {:?}) extends field {:?}.", x, y, f);
-                    let field: &mut Field = &mut fields[f];
-                    field.area += 1;
-                    field.perimeter += perimeter;
-                    self.plots[y][x].field_id = Some(f);
-                } else {
-                    println!("Plot ({:?}, {:?}) generate new field {:?}.", x, y, fields.len());
-                    self.plots[y][x].field_id = Some(fields.len());
-                    fields.push(Field::new(perimeter));
+                if self.plots[y][x].field_id.is_none() {
+                    let crop = self.plots[y][x].crop;
+                    self.annotate_plot_rec(x, y, field_n, crop);
+                    field_n += 1;
                 }
             }
         }
 
+        return field_n;
+    }
+
+    fn annotate_plot_rec(&mut self, x: usize, y: usize, field_id: usize,
+            crop: u8) {
+
+        if self.plots[y][x].field_id.is_none() && self.plots[y][x].crop == crop {
+            self.plots[y][x].field_id = Some(field_id);
+            for (n_x, n_y) in self.neighbour_positions(x, y) {
+                self.annotate_plot_rec(n_x, n_y, field_id, crop);
+            }
+        }
+    }
+
+    /// Annotate all plots as part of a field and return the list of computed
+    /// fields.
+    fn find_fields(&mut self) -> Vec<Field> {
+        let field_count = self.annotate_plots();
+        if field_count == 0 {
+            return Vec::new();
+        }
+        let mut fields = vec![Field::new(); field_count];
+
+        for y in 0..self.max_y + 1 {
+            for x in 0..self.max_x + 1 {
+                let crop = self.plots[y][x].crop;
+                let neighbours = self.neighbours(x, y);
+                let mut perimeter: u64 = (4 - neighbours.len()).try_into().unwrap();
+                let field_id = self.plots[y][x].field_id.unwrap();
+                for neighbour in neighbours {
+                    if crop != neighbour.crop {
+                        perimeter += 1;
+                    }
+                }
+
+                let field: &mut Field = &mut fields[field_id];
+                field.area += 1;
+                field.perimeter += perimeter;
+            }
+        }
+
         return fields;
+    }
+
+    fn neighbour_positions(&self, x: usize, y: usize) -> Vec<(usize, usize)> {
+        let mut neighbours = Vec::with_capacity(4);
+        if x > 0 {
+            neighbours.push((x - 1, y));
+        }
+        if x < self.max_x {
+            neighbours.push((x + 1, y));
+        }
+        if y > 0 {
+            neighbours.push((x, y - 1));
+        }
+        if y < self.max_y {
+            neighbours.push((x, y + 1));
+        }
+
+        return neighbours;
     }
 
     /// Find list of neighbours of the given location.
@@ -513,7 +553,6 @@ mod tests {
         ];
         let mut plots = Plots::parse(&mut input.as_bytes()).unwrap();
         let fields = plots.find_fields();
-        println!("{:?}", fields);
         assert_eq!(fields.len(), 6);
     }
 
