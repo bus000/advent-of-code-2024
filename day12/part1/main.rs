@@ -252,6 +252,9 @@ impl Plots {
         return Plots::parse(&mut stdin_lock);
     }
 
+    /// Loop through all plots and annotate each one as belonging to a field.
+    ///
+    /// Returns the number of fields found.
     fn annotate_plots(&mut self) -> usize {
         let mut field_n = 0;
         for y in 0..self.max_y + 1 {
@@ -267,6 +270,8 @@ impl Plots {
         return field_n;
     }
 
+    /// Annotate the given plot position as field field_id if crop matches. Do
+    /// so recursively for plot neighbours in order to color the whole field.
     fn annotate_plot_rec(&mut self, x: usize, y: usize, field_id: usize,
             crop: u8) {
 
@@ -308,6 +313,7 @@ impl Plots {
         return fields;
     }
 
+    /// Find positions of neighbouring plots.
     fn neighbour_positions(&self, x: usize, y: usize) -> Vec<(usize, usize)> {
         let mut neighbours = Vec::with_capacity(4);
         if x > 0 {
@@ -328,18 +334,10 @@ impl Plots {
 
     /// Find list of neighbours of the given location.
     fn neighbours(&self, x: usize, y: usize) -> Vec<&Plot> {
-        let mut neighbours = Vec::with_capacity(4);
-        if x > 0 {
-            neighbours.push(&self.plots[y][x - 1]);
-        }
-        if x < self.max_x {
-            neighbours.push(&self.plots[y][x + 1]);
-        }
-        if y > 0 {
-            neighbours.push(&self.plots[y - 1][x]);
-        }
-        if y < self.max_y {
-            neighbours.push(&self.plots[y + 1][x]);
+        let neighbours_pos = self.neighbour_positions(x, y);
+        let mut neighbours = Vec::with_capacity(neighbours_pos.len());
+        for (n_x, n_y) in neighbours_pos {
+            neighbours.push(&self.plots[n_y][n_x]);
         }
 
         return neighbours;
@@ -554,6 +552,18 @@ mod tests {
         let mut plots = Plots::parse(&mut input.as_bytes()).unwrap();
         let fields = plots.find_fields();
         assert_eq!(fields.len(), 6);
+        assert_eq!(fields[0].area, 7);
+        assert_eq!(fields[0].perimeter, 12);
+        assert_eq!(fields[1].area, 6);
+        assert_eq!(fields[1].perimeter, 12);
+        assert_eq!(fields[2].area, 16);
+        assert_eq!(fields[2].perimeter, 20);
+        assert_eq!(fields[3].area, 1);
+        assert_eq!(fields[3].perimeter, 4);
+        assert_eq!(fields[4].area, 4);
+        assert_eq!(fields[4].perimeter, 10);
+        assert_eq!(fields[5].area, 1);
+        assert_eq!(fields[5].perimeter, 4);
     }
 
 }
